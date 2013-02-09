@@ -1,0 +1,14 @@
+SELECT pcre_text_eq('foo', 'fo+');
+ pcre_text_eq 
+--------------
+ t
+(1 row)
+
+SELECT pcre_text_eq('bar', 'fo+');
+ pcre_text_eq 
+--------------
+ f
+(1 row)
+
+SELECT pcre_text_eq('error', '+');
+ERROR:  PCRE compile error: nothing to repeat
