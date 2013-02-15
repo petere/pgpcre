@@ -12,3 +12,17 @@ SELECT pcre_text_eq('bar', 'fo+');
 
 SELECT pcre_text_eq('error', '+');
 ERROR:  PCRE compile error: nothing to repeat
+SELECT 'foo' =~ 'fo+';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 'bar' =~ 'fo+';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT 'error' =~ '+';
+ERROR:  PCRE compile error: nothing to repeat
