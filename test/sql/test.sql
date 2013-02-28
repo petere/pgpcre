@@ -5,3 +5,8 @@ SELECT pcre_text_eq('error', '+');
 SELECT 'foo' =~ 'fo+';
 SELECT 'bar' =~ 'fo+';
 SELECT 'error' =~ '+';
+
+-- cached?
+SELECT 'foo' =~ 'fo+';
+SELECT 'bar' =~ 'fo+';
+SELECT 'error' =~ '+';

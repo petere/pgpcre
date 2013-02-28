@@ -26,3 +26,18 @@ SELECT 'bar' =~ 'fo+';
 
 SELECT 'error' =~ '+';
 ERROR:  PCRE compile error: nothing to repeat
+-- cached?
+SELECT 'foo' =~ 'fo+';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 'bar' =~ 'fo+';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT 'error' =~ '+';
+ERROR:  PCRE compile error: nothing to repeat
