@@ -1,0 +1,27 @@
+-- check that it counts characters, not bytes
+SELECT 'ätsch' =~ '^.....$';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 'ätsch' =~ '^......$';
+ ?column? 
+----------
+ f
+(1 row)
+
+-- check Unicode properties
+SELECT 'ätsch' =~ '^\w+$';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- check Unicode in pattern
+SELECT 'ätsch' =~ '^ätsch$';
+ ?column? 
+----------
+ t
+(1 row)
+

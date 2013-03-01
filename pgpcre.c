@@ -1,5 +1,6 @@
 #include <postgres.h>
 #include <fmgr.h>
+#include <mb/pg_wchar.h>
 #include <utils/builtins.h>
 
 #include <pcre.h>
@@ -59,7 +60,22 @@ pcre_compile_and_cache(text *pattern)
 		}
 	}
 
-	pc = pcre_compile(text_to_cstring(pattern), 0, &err, &erroffset, NULL);
+	if (GetDatabaseEncoding() == PG_UTF8)
+		pc = pcre_compile(text_to_cstring(pattern), PCRE_UTF8 | PCRE_UCP, &err, &erroffset, NULL);
+	else if (GetDatabaseEncoding() == PG_SQL_ASCII)
+		pc = pcre_compile(text_to_cstring(pattern), 0, &err, &erroffset, NULL);
+	else
+	{
+		char *utf8string;
+
+		utf8string = (char *) pg_do_encoding_conversion((unsigned char *) text_re_val,
+								text_re_len,
+								GetDatabaseEncoding(),
+								PG_UTF8);
+		pc = pcre_compile(utf8string, PCRE_UTF8 | PCRE_UCP, &err, &erroffset, NULL);
+		if (utf8string != text_re_val)
+			pfree(utf8string);
+	}
 	if (!pc)
 		elog(ERROR, "PCRE compile error: %s", err);
 
@@ -107,14 +123,27 @@ pcre_compile_and_cache(text *pattern)
 Datum
 pcre_text_eq(PG_FUNCTION_ARGS)
 {
-	char *subject = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	text *subject = PG_GETARG_TEXT_PP(0);
 	text *pattern = PG_GETARG_TEXT_PP(1);
 	pcre *pc;
 	int rc;
 
 	pc = pcre_compile_and_cache(pattern);
 
-	rc = pcre_exec(pc, NULL, subject, strlen(subject), 0, 0, NULL, 0);
+	if (GetDatabaseEncoding() == PG_UTF8 || GetDatabaseEncoding() == PG_SQL_ASCII)
+		rc = pcre_exec(pc, NULL, VARDATA_ANY(subject), VARSIZE_ANY_EXHDR(subject), 0, 0, NULL, 0);
+	else
+	{
+		char *utf8string;
+
+		utf8string = (char *) pg_do_encoding_conversion((unsigned char *) VARDATA_ANY(subject),
+								VARSIZE_ANY_EXHDR(subject),
+								GetDatabaseEncoding(),
+								PG_UTF8);
+		rc = pcre_exec(pc, NULL, utf8string, strlen(utf8string), 0, 0, NULL, 0);
+		if (utf8string != VARDATA_ANY(subject))
+			pfree(utf8string);
+	}
 
 	if (rc == PCRE_ERROR_NOMATCH)
 		PG_RETURN_BOOL(false);

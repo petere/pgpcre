@@ -12,7 +12,7 @@ endif
 PG_CPPFLAGS += $(shell $(PKG_CONFIG) --cflags-only-I libpcre)
 SHLIB_LINK += $(shell $(PKG_CONFIG) --libs libpcre)
 
-REGRESS = init test
+REGRESS = init test unicode
 REGRESS_OPTS = --inputdir=test
 
 PGXS := $(shell $(PG_CONFIG) --pgxs)
