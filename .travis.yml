@@ -1,3 +1,5 @@
 language: c
 install: sudo apt-get install -qq libpcre3-dev
-script: make && sudo make install && make installcheck || cat regression.diffs
+script:
+  - make && sudo make install && make installcheck
+  - test ! -e regression.diffs || cat regression.diffs
