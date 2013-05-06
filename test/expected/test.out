@@ -1,3 +1,13 @@
+SELECT pcre 'fo+';
+ pcre 
+------
+ fo+
+(1 row)
+
+SELECT pcre '+';
+ERROR:  PCRE compile error: nothing to repeat
+LINE 1: SELECT pcre '+';
+                    ^
 SELECT pcre_text_eq('foo', 'fo+');
  pcre_text_eq 
 --------------
@@ -12,6 +22,8 @@ SELECT pcre_text_eq('bar', 'fo+');
 
 SELECT pcre_text_eq('error', '+');
 ERROR:  PCRE compile error: nothing to repeat
+LINE 1: SELECT pcre_text_eq('error', '+');
+                                     ^
 SELECT 'foo' =~ 'fo+';
  ?column? 
 ----------
@@ -26,6 +38,8 @@ SELECT 'bar' =~ 'fo+';
 
 SELECT 'error' =~ '+';
 ERROR:  PCRE compile error: nothing to repeat
+LINE 1: SELECT 'error' =~ '+';
+                          ^
 -- cached?
 SELECT 'foo' =~ 'fo+';
  ?column? 
@@ -41,3 +55,5 @@ SELECT 'bar' =~ 'fo+';
 
 SELECT 'error' =~ '+';
 ERROR:  PCRE compile error: nothing to repeat
+LINE 1: SELECT 'error' =~ '+';
+                          ^

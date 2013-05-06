@@ -7,128 +7,102 @@
 
 PG_MODULE_MAGIC;
 
+Datum pcre_in(PG_FUNCTION_ARGS);
+Datum pcre_out(PG_FUNCTION_ARGS);
 Datum pcre_text_eq(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(pcre_in);
+PG_FUNCTION_INFO_V1(pcre_out);
 PG_FUNCTION_INFO_V1(pcre_text_eq);
 
 
-/*
- * RE caching taken from src/backend/utils/adt/regexp.c
- */
-
-/* this is the maximum number of cached regular expressions */
-#ifndef MAX_CACHED_RES
-#define MAX_CACHED_RES	32
-#endif
-
-/* this structure describes one cached regular expression */
-typedef struct cached_re_str
+typedef struct
 {
-	char	   *cre_pat;		/* original RE (not null terminated!) */
-	int			cre_pat_len;	/* length of original RE, in bytes */
-	pcre	   *cre_re;			/* the compiled regular expression */
-} cached_re_str;
+	int32		vl_len_;
+	int16		pcre_major;		/* new version might invalidate compiled pattern */
+	int16		pcre_minor;
+	int32		pattern_strlen;	/* used to compute offset to compiled pattern */
+	char		data[FLEXIBLE_ARRAY_MEMBER];  /* original pattern string
+											   * (null-terminated), followed by
+											   * compiled pattern */
+} pgpcre;
 
-static int	num_res = 0;		/* # of cached re's */
-static cached_re_str re_array[MAX_CACHED_RES];	/* cached re's */
+
+#define DatumGetPcreP(X)         ((pgpcre *) PG_DETOAST_DATUM(X))
+#define DatumGetPcrePCopy(X)     ((pgpcre *) PG_DETOAST_DATUM_COPY(X))
+#define PcrePGetDatum(X)         PointerGetDatum(X)
+#define PG_GETARG_PCRE_P(n)      DatumGetPcreP(PG_GETARG_DATUM(n))
+#define PG_GETARG_PCRE_P_COPY(n) DatumGetPcrePCopy(PG_GETARG_DATUM(n))
+#define PG_RETURN_PCRE_P(x)      return PcrePGetDatum(x)
 
 
-static pcre *
-pcre_compile_and_cache(text *pattern)
+
+Datum
+pcre_in(PG_FUNCTION_ARGS)
 {
-	int			text_re_len = VARSIZE_ANY_EXHDR(pattern);
-	char	   *text_re_val = VARDATA_ANY(pattern);
+	char	   *input_string = PG_GETARG_CSTRING(0);
 	pcre	   *pc;
-	int			i;
-	cached_re_str re_temp;
 	const char *err;
-	int erroffset;
+	int			erroffset;
+	size_t		in_strlen;
+	int			rc, total_len, pcsize;
+	pgpcre	   *result;
 
-	for (i = 0; i < num_res; i++)
-	{
-		if (re_array[i].cre_pat_len == text_re_len &&
-			memcmp(re_array[i].cre_pat, text_re_val, text_re_len) == 0)
-		{
-			/* Found a match; move it to front if not there already. */
-			if (i > 0)
-			{
-				re_temp = re_array[i];
-				memmove(&re_array[1], &re_array[0], i * sizeof(cached_re_str));
-				re_array[0] = re_temp;
-			}
-
-			return re_array[0].cre_re;
-		}
-	}
+	in_strlen = strlen(input_string);
 
 	if (GetDatabaseEncoding() == PG_UTF8)
-		pc = pcre_compile(text_to_cstring(pattern), PCRE_UTF8 | PCRE_UCP, &err, &erroffset, NULL);
+		pc = pcre_compile(input_string, PCRE_UTF8 | PCRE_UCP, &err, &erroffset, NULL);
 	else if (GetDatabaseEncoding() == PG_SQL_ASCII)
-		pc = pcre_compile(text_to_cstring(pattern), 0, &err, &erroffset, NULL);
+		pc = pcre_compile(input_string, 0, &err, &erroffset, NULL);
 	else
 	{
 		char *utf8string;
 
-		utf8string = (char *) pg_do_encoding_conversion((unsigned char *) text_re_val,
-								text_re_len,
-								GetDatabaseEncoding(),
-								PG_UTF8);
+		utf8string = (char *) pg_do_encoding_conversion((unsigned char *) input_string,
+														in_strlen,
+														GetDatabaseEncoding(),
+														PG_UTF8);
 		pc = pcre_compile(utf8string, PCRE_UTF8 | PCRE_UCP, &err, &erroffset, NULL);
-		if (utf8string != text_re_val)
+		if (utf8string != input_string)
 			pfree(utf8string);
 	}
 	if (!pc)
 		elog(ERROR, "PCRE compile error: %s", err);
 
-	re_temp.cre_re = pc;
+	rc = pcre_fullinfo(pc, NULL, PCRE_INFO_SIZE, &pcsize);
+	if (rc < 0)
+		elog(ERROR, "pcre_fullinfo/PCRE_INFO_SIZE: %d", rc);
 
-	/*
-	 * We use malloc/free for the cre_pat field because the storage has to
-	 * persist across transactions, and because we want to get control back on
-	 * out-of-memory.  The Max() is because some malloc implementations return
-	 * NULL for malloc(0).
-	 */
-	re_temp.cre_pat = malloc(Max(text_re_len, 1));
-	if (re_temp.cre_pat == NULL)
-	{
-		pcre_free(&re_temp.cre_re);
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-	}
-	memcpy(re_temp.cre_pat, text_re_val, text_re_len);
-	re_temp.cre_pat_len = text_re_len;
+	total_len = offsetof(pgpcre, data) + in_strlen + 1 + pcsize;
+	result = (pgpcre *) palloc0(total_len);
+	SET_VARSIZE(result, total_len);
+	result->pcre_major = PCRE_MAJOR;
+	result->pcre_minor = PCRE_MINOR;
+	result->pattern_strlen = in_strlen;
+	strcpy(result->data, input_string);
+	memcpy(result->data + in_strlen + 1, pc, pcsize);
 
-	/*
-	 * Okay, we have a valid new item in re_temp; insert it into the storage
-	 * array.  Discard last entry if needed.
-	 */
-	if (num_res >= MAX_CACHED_RES)
-	{
-		--num_res;
-		Assert(num_res < MAX_CACHED_RES);
-		pcre_free(re_array[num_res].cre_re);
-		free(re_array[num_res].cre_pat);
-	}
+	PG_RETURN_PCRE_P(result);
+}
 
-	if (num_res > 0)
-		memmove(&re_array[1], &re_array[0], num_res * sizeof(cached_re_str));
 
-	re_array[0] = re_temp;
-	num_res++;
+Datum
+pcre_out(PG_FUNCTION_ARGS)
+{
+	pgpcre	   *p = PG_GETARG_PCRE_P(0);
 
-	return re_array[0].cre_re;
+	PG_RETURN_CSTRING(pstrdup(p->data));
 }
 
 
 Datum
 pcre_text_eq(PG_FUNCTION_ARGS)
 {
-	text *subject = PG_GETARG_TEXT_PP(0);
-	text *pattern = PG_GETARG_TEXT_PP(1);
-	pcre *pc;
-	int rc;
+	text	   *subject = PG_GETARG_TEXT_PP(0);
+	pgpcre	   *pattern = PG_GETARG_PCRE_P(1);
+	pcre	   *pc;
+	int			rc;
 
-	pc = pcre_compile_and_cache(pattern);
+	pc = (pcre *) (pattern->data + pattern->pattern_strlen + 1);
 
 	if (GetDatabaseEncoding() == PG_UTF8 || GetDatabaseEncoding() == PG_SQL_ASCII)
 		rc = pcre_exec(pc, NULL, VARDATA_ANY(subject), VARSIZE_ANY_EXHDR(subject), 0, 0, NULL, 0);
@@ -137,9 +111,9 @@ pcre_text_eq(PG_FUNCTION_ARGS)
 		char *utf8string;
 
 		utf8string = (char *) pg_do_encoding_conversion((unsigned char *) VARDATA_ANY(subject),
-								VARSIZE_ANY_EXHDR(subject),
-								GetDatabaseEncoding(),
-								PG_UTF8);
+														VARSIZE_ANY_EXHDR(subject),
+														GetDatabaseEncoding(),
+														PG_UTF8);
 		rc = pcre_exec(pc, NULL, utf8string, strlen(utf8string), 0, 0, NULL, 0);
 		if (utf8string != VARDATA_ANY(subject))
 			pfree(utf8string);
