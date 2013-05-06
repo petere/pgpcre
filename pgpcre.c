@@ -14,6 +14,9 @@ PG_FUNCTION_INFO_V1(pcre_in);
 PG_FUNCTION_INFO_V1(pcre_out);
 PG_FUNCTION_INFO_V1(pcre_text_eq);
 
+#ifndef FLEXIBLE_ARRAY_MEMBER
+#define FLEXIBLE_ARRAY_MEMBER 1
+#endif
 
 typedef struct
 {
