@@ -1,15 +1,14 @@
 \i pgpcre.sql
+SET client_min_messages = warning;
+CREATE TYPE pcre;
 CREATE FUNCTION pcre_in(cstring)
 RETURNS pcre
 AS '$libdir/pgpcre'
 LANGUAGE C STRICT;
-psql:pgpcre.sql:4: NOTICE:  type "pcre" is not yet defined
-DETAIL:  Creating a shell type definition.
 CREATE FUNCTION pcre_out(pcre)
 RETURNS cstring
 AS '$libdir/pgpcre'
 LANGUAGE C STRICT;
-psql:pgpcre.sql:9: NOTICE:  argument type pcre is only a shell
 CREATE TYPE pcre (
     INTERNALLENGTH = -1,
     INPUT = pcre_in,

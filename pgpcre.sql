@@ -1,3 +1,7 @@
+SET client_min_messages = warning;
+
+CREATE TYPE pcre;
+
 CREATE FUNCTION pcre_in(cstring)
 RETURNS pcre
 AS '$libdir/pgpcre'
