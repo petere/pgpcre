@@ -1,15 +1,23 @@
 SELECT pcre 'fo+';
 SELECT pcre '+';
 
-SELECT pcre_text_eq('foo', 'fo+');
-SELECT pcre_text_eq('bar', 'fo+');
-SELECT pcre_text_eq('error', '+');
-
 SELECT 'foo' =~ 'fo+';
 SELECT 'bar' =~ 'fo+';
 SELECT 'error' =~ '+';
 
--- cached?
-SELECT 'foo' =~ 'fo+';
-SELECT 'bar' =~ 'fo+';
-SELECT 'error' =~ '+';
+SELECT 'foo' ~ pcre 'fo+';
+SELECT 'bar' ~ pcre 'fo+';
+
+SELECT pcre 'fo+' ~ 'foo';
+SELECT pcre 'fo+' ~ 'bar';
+
+SELECT 'foo' !~ pcre 'fo+';
+SELECT 'bar' !~ pcre 'fo+';
+
+SELECT pcre 'fo+' !~ 'foo';
+SELECT pcre 'fo+' !~ 'bar';
+
+SELECT pcre 'fo+' ~ ANY(ARRAY['foo', 'bar']);
+
+SELECT 'FOO' ~ pcre 'fo+';
+SELECT 'FOO' ~ pcre '(?i)fo+';

@@ -8,22 +8,6 @@ SELECT pcre '+';
 ERROR:  PCRE compile error: nothing to repeat
 LINE 1: SELECT pcre '+';
                     ^
-SELECT pcre_text_eq('foo', 'fo+');
- pcre_text_eq 
---------------
- t
-(1 row)
-
-SELECT pcre_text_eq('bar', 'fo+');
- pcre_text_eq 
---------------
- f
-(1 row)
-
-SELECT pcre_text_eq('error', '+');
-ERROR:  PCRE compile error: nothing to repeat
-LINE 1: SELECT pcre_text_eq('error', '+');
-                                     ^
 SELECT 'foo' =~ 'fo+';
  ?column? 
 ----------
@@ -40,20 +24,69 @@ SELECT 'error' =~ '+';
 ERROR:  PCRE compile error: nothing to repeat
 LINE 1: SELECT 'error' =~ '+';
                           ^
--- cached?
-SELECT 'foo' =~ 'fo+';
+SELECT 'foo' ~ pcre 'fo+';
  ?column? 
 ----------
  t
 (1 row)
 
-SELECT 'bar' =~ 'fo+';
+SELECT 'bar' ~ pcre 'fo+';
  ?column? 
 ----------
  f
 (1 row)
 
-SELECT 'error' =~ '+';
-ERROR:  PCRE compile error: nothing to repeat
-LINE 1: SELECT 'error' =~ '+';
-                          ^
+SELECT pcre 'fo+' ~ 'foo';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT pcre 'fo+' ~ 'bar';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT 'foo' !~ pcre 'fo+';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT 'bar' !~ pcre 'fo+';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT pcre 'fo+' !~ 'foo';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT pcre 'fo+' !~ 'bar';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT pcre 'fo+' ~ ANY(ARRAY['foo', 'bar']);
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 'FOO' ~ pcre 'fo+';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT 'FOO' ~ pcre '(?i)fo+';
+ ?column? 
+----------
+ t
+(1 row)
+

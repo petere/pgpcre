@@ -9,10 +9,16 @@ PG_MODULE_MAGIC;
 
 Datum pcre_in(PG_FUNCTION_ARGS);
 Datum pcre_out(PG_FUNCTION_ARGS);
-Datum pcre_text_eq(PG_FUNCTION_ARGS);
+Datum pcre_text_matches(PG_FUNCTION_ARGS);
+Datum pcre_matches_text(PG_FUNCTION_ARGS);
+Datum pcre_text_matches_not(PG_FUNCTION_ARGS);
+Datum pcre_matches_text_not(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1(pcre_in);
 PG_FUNCTION_INFO_V1(pcre_out);
-PG_FUNCTION_INFO_V1(pcre_text_eq);
+PG_FUNCTION_INFO_V1(pcre_text_matches);
+PG_FUNCTION_INFO_V1(pcre_matches_text);
+PG_FUNCTION_INFO_V1(pcre_text_matches_not);
+PG_FUNCTION_INFO_V1(pcre_matches_text_not);
 
 #ifndef FLEXIBLE_ARRAY_MEMBER
 #define FLEXIBLE_ARRAY_MEMBER 1
@@ -97,11 +103,9 @@ pcre_out(PG_FUNCTION_ARGS)
 }
 
 
-Datum
-pcre_text_eq(PG_FUNCTION_ARGS)
+static bool
+matches_internal(text *subject, pgpcre *pattern)
 {
-	text	   *subject = PG_GETARG_TEXT_PP(0);
-	pgpcre	   *pattern = PG_GETARG_PCRE_P(1);
 	pcre	   *pc;
 	int			rc;
 
@@ -123,9 +127,49 @@ pcre_text_eq(PG_FUNCTION_ARGS)
 	}
 
 	if (rc == PCRE_ERROR_NOMATCH)
-		PG_RETURN_BOOL(false);
+		return false;
 	else if (rc < 0)
 		elog(ERROR, "PCRE exec error: %d", rc);
 
-	PG_RETURN_BOOL(true);
+	return true;
+}
+
+
+Datum
+pcre_text_matches(PG_FUNCTION_ARGS)
+{
+	text	   *subject = PG_GETARG_TEXT_PP(0);
+	pgpcre	   *pattern = PG_GETARG_PCRE_P(1);
+
+	PG_RETURN_BOOL(matches_internal(subject, pattern));
+}
+
+
+Datum
+pcre_matches_text(PG_FUNCTION_ARGS)
+{
+	pgpcre	   *pattern = PG_GETARG_PCRE_P(0);
+	text	   *subject = PG_GETARG_TEXT_PP(1);
+
+	PG_RETURN_BOOL(matches_internal(subject, pattern));
+}
+
+
+Datum
+pcre_text_matches_not(PG_FUNCTION_ARGS)
+{
+	text	   *subject = PG_GETARG_TEXT_PP(0);
+	pgpcre	   *pattern = PG_GETARG_PCRE_P(1);
+
+	PG_RETURN_BOOL(!matches_internal(subject, pattern));
+}
+
+
+Datum
+pcre_matches_text_not(PG_FUNCTION_ARGS)
+{
+	pgpcre	   *pattern = PG_GETARG_PCRE_P(0);
+	text	   *subject = PG_GETARG_TEXT_PP(1);
+
+	PG_RETURN_BOOL(!matches_internal(subject, pattern));
 }
