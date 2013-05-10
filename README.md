@@ -54,9 +54,7 @@ and creating the appropriate `text_pattern_ops` index as you would for the built
 
 ## Installation
 
-    psql -f pgpcre.sql
-
-Extension support will be added later.
+    CREATE EXTENSION pgpcre;
 
 
 [![Build Status](https://secure.travis-ci.org/petere/pgpcre.png)](http://travis-ci.org/petere/pgpcre)

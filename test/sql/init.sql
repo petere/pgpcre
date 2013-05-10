@@ -1,1 +1,1 @@
-\i pgpcre.sql
+CREATE EXTENSION pgpcre;
