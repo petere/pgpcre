@@ -90,3 +90,39 @@ SELECT 'FOO' ~ pcre '(?i)fo+';
  t
 (1 row)
 
+SELECT pcre_match('fo+', 'foobar');
+ pcre_match 
+------------
+ foo
+(1 row)
+
+SELECT pcre_match('fo+', 'barbar');
+ pcre_match 
+------------
+ 
+(1 row)
+
+SELECT pcre_captured_substrings('(fo+)(b..)', 'foobar');
+ pcre_captured_substrings 
+--------------------------
+ {foo,bar}
+(1 row)
+
+SELECT pcre_captured_substrings('(fo+)(b..)', 'abcdef');
+ pcre_captured_substrings 
+--------------------------
+ 
+(1 row)
+
+SELECT pcre_captured_substrings('(a|(z))(bc)', 'abc');
+ pcre_captured_substrings 
+--------------------------
+ {a,NULL,bc}
+(1 row)
+
+SELECT pcre_captured_substrings('(abc)(x(yz)?)?', 'abc');
+ pcre_captured_substrings 
+--------------------------
+ {abc,NULL,NULL}
+(1 row)
+

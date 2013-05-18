@@ -21,3 +21,11 @@ SELECT pcre 'fo+' ~ ANY(ARRAY['foo', 'bar']);
 
 SELECT 'FOO' ~ pcre 'fo+';
 SELECT 'FOO' ~ pcre '(?i)fo+';
+
+SELECT pcre_match('fo+', 'foobar');
+SELECT pcre_match('fo+', 'barbar');
+
+SELECT pcre_captured_substrings('(fo+)(b..)', 'foobar');
+SELECT pcre_captured_substrings('(fo+)(b..)', 'abcdef');
+SELECT pcre_captured_substrings('(a|(z))(bc)', 'abc');
+SELECT pcre_captured_substrings('(abc)(x(yz)?)?', 'abc');

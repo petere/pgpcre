@@ -1,6 +1,8 @@
 #include <postgres.h>
+#include <catalog/pg_type.h>
 #include <fmgr.h>
 #include <mb/pg_wchar.h>
+#include <utils/array.h>
 #include <utils/builtins.h>
 
 #include <pcre.h>
@@ -13,12 +15,18 @@ Datum pcre_text_matches(PG_FUNCTION_ARGS);
 Datum pcre_matches_text(PG_FUNCTION_ARGS);
 Datum pcre_text_matches_not(PG_FUNCTION_ARGS);
 Datum pcre_matches_text_not(PG_FUNCTION_ARGS);
+Datum pcre_match(PG_FUNCTION_ARGS);
+Datum pcre_captured_substrings(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1(pcre_in);
 PG_FUNCTION_INFO_V1(pcre_out);
 PG_FUNCTION_INFO_V1(pcre_text_matches);
 PG_FUNCTION_INFO_V1(pcre_matches_text);
 PG_FUNCTION_INFO_V1(pcre_text_matches_not);
 PG_FUNCTION_INFO_V1(pcre_matches_text_not);
+PG_FUNCTION_INFO_V1(pcre_match);
+PG_FUNCTION_INFO_V1(pcre_captured_substrings);
+
+void _PG_init(void);
 
 #ifndef FLEXIBLE_ARRAY_MEMBER
 #define FLEXIBLE_ARRAY_MEMBER 1
@@ -104,32 +112,90 @@ pcre_out(PG_FUNCTION_ARGS)
 
 
 static bool
-matches_internal(text *subject, pgpcre *pattern)
+matches_internal(text *subject, pgpcre *pattern, char ***return_matches, int *num_captured)
 {
 	pcre	   *pc;
 	int			rc;
+	int			num_substrings = 0;
+	int		   *ovector;
+	int			ovecsize;
+	char	   *utf8string;
 
 	pc = (pcre *) (pattern->data + pattern->pattern_strlen + 1);
 
-	if (GetDatabaseEncoding() == PG_UTF8 || GetDatabaseEncoding() == PG_SQL_ASCII)
-		rc = pcre_exec(pc, NULL, VARDATA_ANY(subject), VARSIZE_ANY_EXHDR(subject), 0, 0, NULL, 0);
+	if (num_captured)
+	{
+		int rc;
+
+		if ((rc = pcre_fullinfo(pc, NULL, PCRE_INFO_CAPTURECOUNT, &num_substrings)) != 0)
+			elog(ERROR, "pcre_fullinfo error: %d", rc);
+	}
+
+	if (return_matches)
+	{
+		ovecsize = (num_substrings + 1) * 3;
+		ovector = palloc(ovecsize * sizeof(*ovector));
+	}
 	else
 	{
-		char *utf8string;
+		ovecsize = 0;
+		ovector = NULL;
+	}
 
+	if (GetDatabaseEncoding() == PG_UTF8 || GetDatabaseEncoding() == PG_SQL_ASCII)
+	{
+		utf8string = VARDATA_ANY(subject);
+		rc = pcre_exec(pc, NULL, VARDATA_ANY(subject), VARSIZE_ANY_EXHDR(subject), 0, 0, ovector, ovecsize);
+	}
+	else
+	{
 		utf8string = (char *) pg_do_encoding_conversion((unsigned char *) VARDATA_ANY(subject),
 														VARSIZE_ANY_EXHDR(subject),
 														GetDatabaseEncoding(),
 														PG_UTF8);
-		rc = pcre_exec(pc, NULL, utf8string, strlen(utf8string), 0, 0, NULL, 0);
-		if (utf8string != VARDATA_ANY(subject))
-			pfree(utf8string);
+		rc = pcre_exec(pc, NULL, utf8string, strlen(utf8string), 0, 0, ovector, ovecsize);
 	}
 
 	if (rc == PCRE_ERROR_NOMATCH)
 		return false;
 	else if (rc < 0)
 		elog(ERROR, "PCRE exec error: %d", rc);
+
+	if (return_matches)
+	{
+		char **matches;
+
+		if (num_captured)
+		{
+			int i;
+
+			*num_captured = num_substrings;
+			matches = palloc(num_substrings * sizeof(*matches));
+
+			for (i = 1; i <= num_substrings; i++)
+			{
+				if (ovector[i * 2] < 0)
+					matches[i - 1] = NULL;
+				else
+				{
+					const char *xmatch;
+
+					pcre_get_substring(utf8string, ovector, rc, i, &xmatch);
+					matches[i - 1] = (char *) xmatch;
+				}
+			}
+		}
+		else
+		{
+			const char *xmatch;
+
+			matches = palloc(1 * sizeof(*matches));
+			pcre_get_substring(utf8string, ovector, rc, 0, &xmatch);
+			matches[0] = (char *) xmatch;
+		}
+
+		*return_matches = matches;
+	}
 
 	return true;
 }
@@ -141,7 +207,7 @@ pcre_text_matches(PG_FUNCTION_ARGS)
 	text	   *subject = PG_GETARG_TEXT_PP(0);
 	pgpcre	   *pattern = PG_GETARG_PCRE_P(1);
 
-	PG_RETURN_BOOL(matches_internal(subject, pattern));
+	PG_RETURN_BOOL(matches_internal(subject, pattern, NULL, NULL));
 }
 
 
@@ -151,7 +217,7 @@ pcre_matches_text(PG_FUNCTION_ARGS)
 	pgpcre	   *pattern = PG_GETARG_PCRE_P(0);
 	text	   *subject = PG_GETARG_TEXT_PP(1);
 
-	PG_RETURN_BOOL(matches_internal(subject, pattern));
+	PG_RETURN_BOOL(matches_internal(subject, pattern, NULL, NULL));
 }
 
 
@@ -161,7 +227,7 @@ pcre_text_matches_not(PG_FUNCTION_ARGS)
 	text	   *subject = PG_GETARG_TEXT_PP(0);
 	pgpcre	   *pattern = PG_GETARG_PCRE_P(1);
 
-	PG_RETURN_BOOL(!matches_internal(subject, pattern));
+	PG_RETURN_BOOL(!matches_internal(subject, pattern, NULL, NULL));
 }
 
 
@@ -171,5 +237,81 @@ pcre_matches_text_not(PG_FUNCTION_ARGS)
 	pgpcre	   *pattern = PG_GETARG_PCRE_P(0);
 	text	   *subject = PG_GETARG_TEXT_PP(1);
 
-	PG_RETURN_BOOL(!matches_internal(subject, pattern));
+	PG_RETURN_BOOL(!matches_internal(subject, pattern, NULL, NULL));
+}
+
+
+Datum
+pcre_match(PG_FUNCTION_ARGS)
+{
+	pgpcre	   *pattern = PG_GETARG_PCRE_P(0);
+	text	   *subject = PG_GETARG_TEXT_PP(1);
+	char	  **matches;
+
+	if (matches_internal(subject, pattern, &matches, NULL))
+		PG_RETURN_TEXT_P(cstring_to_text(matches[0]));
+	else
+		PG_RETURN_NULL();
+}
+
+
+Datum
+pcre_captured_substrings(PG_FUNCTION_ARGS)
+{
+	pgpcre	   *pattern = PG_GETARG_PCRE_P(0);
+	text	   *subject = PG_GETARG_TEXT_PP(1);
+	char	  **matches;
+	int			num_captured;
+
+	if (matches_internal(subject, pattern, &matches, &num_captured))
+	{
+		ArrayType  *result;
+		int			dims[1];
+		int			lbs[1];
+		Datum	   *elems;
+		bool	   *nulls;
+		int i;
+
+		dims[0] = num_captured;
+		lbs[0] = 1;
+
+		elems = palloc(num_captured * sizeof(*elems));
+		nulls = palloc(num_captured * sizeof(*nulls));
+		for (i = 0; i < num_captured; i++)
+			if (matches[i])
+			{
+				elems[i] = PointerGetDatum(cstring_to_text(matches[i]));
+				nulls[i] = false;
+			}
+			else
+				nulls[i] = true;
+
+		result = construct_md_array(elems, nulls, 1, dims, lbs, TEXTOID, -1, false, 'i');
+
+		PG_RETURN_ARRAYTYPE_P(result);
+	}
+	else
+		PG_RETURN_NULL();
+}
+
+
+static void *
+pgpcre_malloc(size_t size)
+{
+	return palloc(size);
+}
+
+
+static void
+pgpcre_free(void *ptr)
+{
+	pfree(ptr);
+}
+
+
+void
+_PG_init(void)
+{
+	pcre_malloc = pgpcre_malloc;
+	pcre_free = pgpcre_free;
 }

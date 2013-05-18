@@ -76,3 +76,15 @@ CREATE OPERATOR !~ (
     COMMUTATOR = !~,
     NEGATOR = ~
 );
+
+CREATE FUNCTION pcre_match(pattern pcre, subject text) RETURNS text
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+AS '$libdir/pgpcre'
+LANGUAGE C;
+
+CREATE FUNCTION pcre_captured_substrings(pattern pcre, subject text) RETURNS text[]
+IMMUTABLE
+RETURNS NULL ON NULL INPUT
+AS '$libdir/pgpcre'
+LANGUAGE C;
