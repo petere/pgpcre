@@ -86,6 +86,25 @@ Note that elements of the array can be null if a substring was not used, for exa
 
     SELECT pcre_captured_substrings('(a|(z))(bc)', 'abc');  --> ARRAY['a',NULL,'bc']
 
+### Storing regular expressions
+
+You can store regular expression values of type `pcre` in tables, like
+any other data.  Note, however, that the binary representation of the
+`pcre` values contains the compiled regular expression, which is tied
+to the version of the PCRE library.  If you upgrade the PCRE library
+and use a compiled value created by a different version, things might
+not work or even crash (according to the PCRE documentation; I don't
+know how likely that is).  pgpcre will warn if you attempt to use a
+value that was compiled by a different version of the library.  If
+that happens, it is advisable to recompile and rewrite all stored
+`pcre` values by doing something like
+
+    UPDATE ... SET pcre_col = pcre_col::text::pcre
+
+(To be clear, storing regular expressions in tables is not a typical
+use.  Normally, you store text in tables and match it against regular
+expressions provided by your application.)
+
 ## Discussion
 
 Some possible advantages over the regular expression support built into PostgreSQL:

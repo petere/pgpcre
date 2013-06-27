@@ -120,6 +120,18 @@ matches_internal(text *subject, pgpcre *pattern, char ***return_matches, int *nu
 	int		   *ovector;
 	int			ovecsize;
 	char	   *utf8string;
+	static bool warned = false;
+
+	if (!warned && (pattern->pcre_major != PCRE_MAJOR || pattern->pcre_minor != PCRE_MINOR))
+	{
+		ereport(WARNING,
+				(errmsg("PCRE version mismatch"),
+				 errdetail("The compiled pattern was created by PCRE version %d.%d, the current library is version %d.%d.  According to the PCRE documentation, \"compiling a regular expression with one version of PCRE for use with a different version is not guaranteed to work and may cause crashes.\"  This warning is shown only once per session.",
+						   pattern->pcre_major, pattern->pcre_minor,
+						   PCRE_MAJOR, PCRE_MINOR),
+				 errhint("You might want to recompile the stored patterns by running something like UPDATE ... SET pcre_col = pcre_col::text::pcre.")));
+		warned = true;
+	}
 
 	pc = (pcre *) (pattern->data + pattern->pattern_strlen + 1);
 
