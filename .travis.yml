@@ -1,5 +1,10 @@
 language: c
 install: sudo apt-get install -qq libpcre3-dev
-script:
-  - make && sudo make install && make installcheck
-  - test ! -e regression.diffs || cat regression.diffs
+before_install:
+  - wget https://gist.github.com/petere/5893799/raw/22814fa7d28c0a81434677ab68236f8565644648/apt.postgresql.org.sh
+  - wget https://gist.github.com/petere/6023944/raw/76085b1c8344606e77cd0e5131e7ce9b2a4b809f/pg-travis-test.sh
+  - sudo sh ./apt.postgresql.org.sh
+env:
+  - PGVERSION=9.1
+  - PGVERSION=9.2
+script: bash ./pg-travis-test.sh
