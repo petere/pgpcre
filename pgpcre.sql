@@ -4,11 +4,13 @@ CREATE TYPE pcre;
 
 CREATE FUNCTION pcre_in(cstring)
 RETURNS pcre
+IMMUTABLE
 AS '$libdir/pgpcre'
 LANGUAGE C STRICT;
 
 CREATE FUNCTION pcre_out(pcre)
 RETURNS cstring
+IMMUTABLE
 AS '$libdir/pgpcre'
 LANGUAGE C STRICT;
 
