@@ -1,4 +1,4 @@
 comment = 'Perl Compatible Regular Expression functions'
-default_version = 0
+default_version = 1
 module_pathname = '$libdir/pgpcre'
 relocatable = true

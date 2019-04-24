@@ -1,14 +1,10 @@
 PG_CONFIG = pg_config
 PKG_CONFIG = pkg-config
 
-extension_version = 0
-
 EXTENSION = pgpcre
 MODULE_big = pgpcre
 OBJS = pgpcre.o
-DATA_built = pgpcre--$(extension_version).sql
-
-EXTRA_CLEAN = $(DATA_built)
+DATA = pgpcre--0.sql pgpcre--1.sql pgpcre--0--1.sql
 
 ifeq (no,$(shell $(PKG_CONFIG) libpcre || echo no))
 $(warning libpcre not registed with pkg-config, build might fail)
@@ -22,6 +18,3 @@ REGRESS_OPTS = --inputdir=test
 
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
-
-pgpcre--$(extension_version).sql: pgpcre.sql
-	cp $< $@

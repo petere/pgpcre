@@ -1,0 +1,2 @@
+ALTER FUNCTION pcre_in(cstring) IMMUTABLE;
+ALTER FUNCTION pcre_out(pcre) IMMUTABLE;
