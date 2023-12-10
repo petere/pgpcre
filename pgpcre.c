@@ -137,10 +137,10 @@ matches_internal(text *subject, pgpcre *pattern, char ***return_matches, int *nu
 
 	if (num_captured)
 	{
-		int rc;
+		int rc0;
 
-		if ((rc = pcre_fullinfo(pc, NULL, PCRE_INFO_CAPTURECOUNT, &num_substrings)) != 0)
-			elog(ERROR, "pcre_fullinfo error: %d", rc);
+		if ((rc0 = pcre_fullinfo(pc, NULL, PCRE_INFO_CAPTURECOUNT, &num_substrings)) != 0)
+			elog(ERROR, "pcre_fullinfo error: %d", rc0);
 	}
 
 	if (return_matches)
