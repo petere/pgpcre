@@ -5,7 +5,8 @@
 #include <utils/array.h>
 #include <utils/builtins.h>
 
-#include <pcre.h>
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
 
 PG_MODULE_MAGIC;
 
@@ -57,19 +58,19 @@ Datum
 pcre_in(PG_FUNCTION_ARGS)
 {
 	char	   *input_string = PG_GETARG_CSTRING(0);
-	pcre	   *pc;
-	const char *err;
-	int			erroffset;
-	size_t		in_strlen;
-	int			rc, total_len, pcsize;
+	pcre2_code *pc;
+	int         err;
+	PCRE2_SIZE		erroffset;
+	size_t		in_strlen, pcsize;
+	int			rc, total_len;
 	pgpcre	   *result;
 
 	in_strlen = strlen(input_string);
 
 	if (GetDatabaseEncoding() == PG_UTF8)
-		pc = pcre_compile(input_string, PCRE_UTF8 | PCRE_UCP, &err, &erroffset, NULL);
+		pc = pcre2_compile((PCRE2_SPTR) input_string, in_strlen, PCRE2_UTF | PCRE2_UCP, &err, &erroffset, NULL);
 	else if (GetDatabaseEncoding() == PG_SQL_ASCII)
-		pc = pcre_compile(input_string, 0, &err, &erroffset, NULL);
+		pc = pcre2_compile((PCRE2_SPTR) input_string, in_strlen, 0, &err, &erroffset, NULL);
 	else
 	{
 		char *utf8string;
@@ -78,22 +79,27 @@ pcre_in(PG_FUNCTION_ARGS)
 														in_strlen,
 														GetDatabaseEncoding(),
 														PG_UTF8);
-		pc = pcre_compile(utf8string, PCRE_UTF8 | PCRE_UCP, &err, &erroffset, NULL);
+		pc = pcre2_compile((PCRE2_SPTR) utf8string, strlen(utf8string), PCRE2_UTF | PCRE2_UCP, &err, &erroffset, NULL);
 		if (utf8string != input_string)
 			pfree(utf8string);
 	}
 	if (!pc)
-		elog(ERROR, "PCRE compile error: %s", err);
+	{
+		PCRE2_UCHAR buf[120];
 
-	rc = pcre_fullinfo(pc, NULL, PCRE_INFO_SIZE, &pcsize);
+		pcre2_get_error_message(err, buf, sizeof(buf));
+		elog(ERROR, "PCRE compile error: %s", buf);
+        }
+
+	rc = pcre2_pattern_info(pc, PCRE2_INFO_SIZE, &pcsize);
 	if (rc < 0)
-		elog(ERROR, "pcre_fullinfo/PCRE_INFO_SIZE: %d", rc);
+		elog(ERROR, "pcre2_pattern_info/PCRE2_INFO_SIZE: %d", rc);
 
 	total_len = offsetof(pgpcre, data) + in_strlen + 1 + pcsize;
 	result = (pgpcre *) palloc0(total_len);
 	SET_VARSIZE(result, total_len);
-	result->pcre_major = PCRE_MAJOR;
-	result->pcre_minor = PCRE_MINOR;
+	result->pcre_major = PCRE2_MAJOR;
+	result->pcre_minor = PCRE2_MINOR;
 	result->pattern_strlen = in_strlen;
 	strcpy(result->data, input_string);
 	memcpy(result->data + in_strlen + 1, pc, pcsize);
@@ -114,50 +120,48 @@ pcre_out(PG_FUNCTION_ARGS)
 static bool
 matches_internal(text *subject, pgpcre *pattern, char ***return_matches, int *num_captured)
 {
-	pcre	   *pc;
+	pcre2_code	   *pc;
+	pcre2_match_data   *md;
 	int			rc;
-	int			num_substrings = 0;
-	int		   *ovector;
+	uint32_t		num_substrings = 0;
+	PCRE2_SIZE	   *ovector;
 	int			ovecsize;
 	char	   *utf8string;
 	static bool warned = false;
 
-	if (!warned && (pattern->pcre_major != PCRE_MAJOR || pattern->pcre_minor != PCRE_MINOR))
+	if (!warned && (pattern->pcre_major != PCRE2_MAJOR || pattern->pcre_minor != PCRE2_MINOR))
 	{
 		ereport(WARNING,
 				(errmsg("PCRE version mismatch"),
 				 errdetail("The compiled pattern was created by PCRE version %d.%d, the current library is version %d.%d.  According to the PCRE documentation, \"compiling a regular expression with one version of PCRE for use with a different version is not guaranteed to work and may cause crashes.\"  This warning is shown only once per session.",
 						   pattern->pcre_major, pattern->pcre_minor,
-						   PCRE_MAJOR, PCRE_MINOR),
+						   PCRE2_MAJOR, PCRE2_MINOR),
 				 errhint("You might want to recompile the stored patterns by running something like UPDATE ... SET pcre_col = pcre_col::text::pcre.")));
 		warned = true;
 	}
 
-	pc = (pcre *) (pattern->data + pattern->pattern_strlen + 1);
+	pc = (pcre2_code *) (pattern->data + pattern->pattern_strlen + 1);
 
 	if (num_captured)
 	{
-		int rc;
-
-		if ((rc = pcre_fullinfo(pc, NULL, PCRE_INFO_CAPTURECOUNT, &num_substrings)) != 0)
-			elog(ERROR, "pcre_fullinfo error: %d", rc);
+		if ((rc = pcre2_pattern_info(pc, PCRE2_INFO_CAPTURECOUNT, &num_substrings)) != 0)
+			elog(ERROR, "pcre2_pattern_info error: %d", rc);
 	}
 
 	if (return_matches)
 	{
 		ovecsize = (num_substrings + 1) * 3;
-		ovector = palloc(ovecsize * sizeof(*ovector));
+		md = pcre2_match_data_create(ovecsize, NULL);
 	}
 	else
 	{
-		ovecsize = 0;
-		ovector = NULL;
+		md = pcre2_match_data_create_from_pattern(pc, NULL);
 	}
 
 	if (GetDatabaseEncoding() == PG_UTF8 || GetDatabaseEncoding() == PG_SQL_ASCII)
 	{
 		utf8string = VARDATA_ANY(subject);
-		rc = pcre_exec(pc, NULL, VARDATA_ANY(subject), VARSIZE_ANY_EXHDR(subject), 0, 0, ovector, ovecsize);
+		rc = pcre2_match(pc, (PCRE2_SPTR) VARDATA_ANY(subject), VARSIZE_ANY_EXHDR(subject), 0, 0, md, NULL);
 	}
 	else
 	{
@@ -165,13 +169,16 @@ matches_internal(text *subject, pgpcre *pattern, char ***return_matches, int *nu
 														VARSIZE_ANY_EXHDR(subject),
 														GetDatabaseEncoding(),
 														PG_UTF8);
-		rc = pcre_exec(pc, NULL, utf8string, strlen(utf8string), 0, 0, ovector, ovecsize);
+		rc = pcre2_match(pc, (PCRE2_SPTR) utf8string, strlen(utf8string), 0, 0, md, NULL);
 	}
 
-	if (rc == PCRE_ERROR_NOMATCH)
+	if (rc == PCRE2_ERROR_NOMATCH)
+	{
+		pcre2_match_data_free(md);
 		return false;
+	}
 	else if (rc < 0)
-		elog(ERROR, "PCRE exec error: %d", rc);
+		elog(ERROR, "PCRE match error: %d", rc);
 
 	if (return_matches)
 	{
@@ -183,31 +190,36 @@ matches_internal(text *subject, pgpcre *pattern, char ***return_matches, int *nu
 
 			*num_captured = num_substrings;
 			matches = palloc(num_substrings * sizeof(*matches));
+			ovector = pcre2_get_ovector_pointer(md);
 
 			for (i = 1; i <= num_substrings; i++)
 			{
-				if (ovector[i * 2] < 0)
+				if ((int) ovector[i * 2] < 0)
 					matches[i - 1] = NULL;
 				else
 				{
-					const char *xmatch;
+					PCRE2_UCHAR *xmatch;
+					PCRE2_SIZE l;
 
-					pcre_get_substring(utf8string, ovector, rc, i, &xmatch);
+					pcre2_substring_get_bynumber(md, i, &xmatch, &l);
 					matches[i - 1] = (char *) xmatch;
 				}
 			}
 		}
 		else
 		{
-			const char *xmatch;
+			PCRE2_UCHAR *xmatch;
+			PCRE2_SIZE l;
 
 			matches = palloc(1 * sizeof(*matches));
-			pcre_get_substring(utf8string, ovector, rc, 0, &xmatch);
+			pcre2_substring_get_bynumber(md, 0, &xmatch, &l);
 			matches[0] = (char *) xmatch;
 		}
 
 		*return_matches = matches;
 	}
+
+	pcre2_match_data_free(md);
 
 	return true;
 }
@@ -307,23 +319,7 @@ pcre_captured_substrings(PG_FUNCTION_ARGS)
 }
 
 
-static void *
-pgpcre_malloc(size_t size)
-{
-	return palloc(size);
-}
-
-
-static void
-pgpcre_free(void *ptr)
-{
-	pfree(ptr);
-}
-
-
 void
 _PG_init(void)
 {
-	pcre_malloc = pgpcre_malloc;
-	pcre_free = pgpcre_free;
 }

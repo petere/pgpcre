@@ -5,7 +5,7 @@ SELECT pcre 'fo+';
 (1 row)
 
 SELECT pcre '+';
-ERROR:  PCRE compile error: nothing to repeat
+ERROR:  PCRE compile error: quantifier does not follow a repeatable item
 LINE 1: SELECT pcre '+';
                     ^
 SELECT 'foo' =~ 'fo+';
@@ -21,7 +21,7 @@ SELECT 'bar' =~ 'fo+';
 (1 row)
 
 SELECT 'error' =~ '+';
-ERROR:  PCRE compile error: nothing to repeat
+ERROR:  PCRE compile error: quantifier does not follow a repeatable item
 LINE 1: SELECT 'error' =~ '+';
                           ^
 SELECT 'foo' ~ pcre 'fo+';
