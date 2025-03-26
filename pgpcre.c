@@ -137,8 +137,6 @@ matches_internal(text *subject, pgpcre *pattern, char ***return_matches, int *nu
 
 	if (num_captured)
 	{
-		int rc;
-
 		if ((rc = pcre_fullinfo(pc, NULL, PCRE_INFO_CAPTURECOUNT, &num_substrings)) != 0)
 			elog(ERROR, "pcre_fullinfo error: %d", rc);
 	}
